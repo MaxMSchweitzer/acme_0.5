@@ -7,38 +7,15 @@
 	This is the ACME: ece_led driver
 */
 
-#include <linux/pci.h>
-#include <linux/module.h>
-#include <linux/fs.h>
-#include <linux/cdev.h>
-#include <linux/time.h>
-#include <asm/uaccess.h>	
-
-#define DEVCOUNT		1
-#define DEVNAME			"ece_led"
-#define BLINKRATE		2
-#define LED_ON			0x4E
-#define LED_OFF			0x0F
-#define LEDCTL 			0x00E00
+#include "acme.h"
 
 static dev_t acme_dev_number;
 static struct class *acme_class;
 static struct timer_list acme_timer;
+//struct *acme_devp;
 static int blink_rate=BLINKRATE;
 
 module_param(blink_rate,int,S_IRUGO|S_IWUSR);
-
-struct pci_hw{
-	void __iomem *hw_addr;
-	void __iomem *led_addr;
-};
-
-struct acme_dev{
-	struct cdev cdev;				
-	struct pci_hw hw;
-	u32 led_ctl;    //controls on or off
-	int blink_rate; //blinks per second
-} *acme_devp;
 
 static void acme_timer_cb(unsigned long data){
 	acme_devp->led_ctl = readl(acme_devp->hw.led_addr);	
@@ -62,7 +39,8 @@ static int acme_close(struct inode *inode,struct file *filp){
 	return err;
 }
 
-static ssize_t acme_read(struct file *filp,char __user *buf,size_t len,loff_t *offset){
+static ssize_t 
+acme_read(struct file *filp,char __user *buf,size_t len,loff_t *offset){
 	int ret;
 	
 	if(*offset >= sizeof(int))return 0;
@@ -81,7 +59,9 @@ out:
 	return ret;
 }
 
-static ssize_t acme_write(struct file *filp,const char __user *buf,size_t len,loff_t *offset){
+static ssize_t acme_write(struct file *filp,
+													const char __user *buf,
+													size_t len,loff_t *offset){
 	int ret, _blink_rate;
 	char temp[30];
 	if(!buf){
@@ -100,8 +80,6 @@ static ssize_t acme_write(struct file *filp,const char __user *buf,size_t len,lo
 		printk("Ignorring invalid blink_rate!\n");
 		goto out;
 	}
-	acme_devp->blink_rate=_blink_rate;
-	ret = len;
 out:
 	return ret;
 }
@@ -114,20 +92,68 @@ static const struct file_operations acme_fops = {
 	.write 		= acme_write,
 };
 
-static int amce_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent){
+static int descriptor_init(struct pci_dev *pdev){
+	struct acme_ring *rx_ring = acme_devp->rx_ring;
+	int i=0;
+/*
+	if(!rx_ring->count)rx_ring->count=ACME_RXD;
+
+	rx_ring->buffer_info=kcalloc(rx_ring->count,sizeof(struct acme_buffer),GFP_KERNEL);
+
+	if (!rx_ring->buffer_info) {
+	//	ret_val = 5;
+		goto err_nomem;
+	}
+	
+	rx_ring->size = rx_ring->count * sizeof(struct acme_desc);
+	rx_ring->desc = dma_alloc_coherent(&pdev, rx_ring->size,
+									   &rx_ring->dma, GFP_KERNEL);
+
+	if (!rx_ring->desc) {
+		ret_val = 6;
+		goto err_nomem;
+	}
+	rx_ring->next_to_use = 0;
+	rx_ring->next_to_clean = 0;
+*/
+
+	do{
+		acme_devp->rx_desc[i]=ACME_RX_DESC(*rx_ring,i);
+		acme_devp->rx_desc[i]->buffer_addr=cpu_le64(rx_ring->buffer_info->dma);
+//		acme_devp->rx_desc[i]->lower.data=cpu_to_le32(rxd_lower|buffer_info->length);
+//		acme_devp->rx_desc[i]->upper.data=cpu_to_le32(rxd_upper);
+		++i;
+		if(i==rx_ring->count)i=0;
+	}while(--count>0);
+
+
+
+	return 0;
+}
+
+static int descriptor_free(void){
+	int i=0;
+	for (;i<ACME_RXD;++i){
+//		kfree(desc[i].buff_addr);
+	}
+	return 0;
+}
+
+static int 
+amce_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent){
 	int bars, err;
 	resource_size_t mmio_start, mmio_len;
 
 	printk(KERN_INFO "It's dangerous to go alone, take this with you.\n");
 	
 	err=pci_enable_device_mem(pdev);
-	if(err)return err;
+if(err)return err;
 
 	bars=pci_select_bars(pdev, IORESOURCE_MEM);
 	
 	err=pci_request_selected_regions(pdev,bars,DEVNAME);
 	if(err)goto err_pci_reg;
-	
+	descriptor_init();
 	pci_set_master(pdev);
 	
 	mmio_start = pci_resource_start(pdev, 0);
@@ -141,6 +167,7 @@ err_pci_reg:
 }
 
 static void amce_pci_remove(struct pci_dev *pdev){
+	descriptor_free();
 	pci_release_selected_regions(pdev,pci_select_bars(pdev,IORESOURCE_MEM));
 	//pci_release_mem_regions(pdev);
 	pci_disable_device(pdev);
