@@ -135,7 +135,7 @@ static int rx_ring_init(struct pci_dev *pdev){
 	for(i=0;i<rx_ring->count;++i){
 		rx_ring->wtf[i]=kzalloc(DESC_SIZE,GFP_KERNEL);
 		if(!rx_ring->wtf[i])goto err_pages;
-		rx_ring->desc[i].buff_addr=dma_map_single(&pdev->dev,rx_ring->wtf[i],DESC_SIZE,PCI_DMA_FROMDEVICE);
+		rx_ring->desc[i].buff_addr=cpu_to_le64(dma_map_single(&pdev->dev,rx_ring->wtf[i],DESC_SIZE,PCI_DMA_FROMDEVICE));
 	}
 	rx_ring->next_to_use=0;
 	rx_ring->next_to_clean=0;
