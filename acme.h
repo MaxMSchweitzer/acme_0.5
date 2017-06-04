@@ -1,3 +1,12 @@
+/*
+	Chad Coates
+	ECE 373
+	Homework #6
+	June 3, 2017
+
+	This is the ACME: ece_led driver
+*/
+
 #ifndef ACME_H
 #define ACME_H
 
@@ -7,7 +16,6 @@
 #include <linux/cdev.h>
 #include <linux/time.h>
 #include <linux/types.h>
-#include <linux/skbuff.h>
 #include <linux/if.h>
 #include <linux/delay.h>
 #include <linux/vmalloc.h>
@@ -18,29 +26,33 @@
 #define DEVCOUNT					1
 #define DEVNAME						"ece_led"
 #define BLINKRATE					2
-#define LED_ON						0x4E
-#define LED_OFF						0x00
 #define LEDCTL 						0x00E00
-#define GREENS						0x4E4E00
+#define LED_OFF						0x0
+#define GREEN							0x0E0E00
+#define RGREEN						0x000E00
+#define LGREEN						0x0E0000
 
 #define ACME_RXD	 				0x10	//number of descriptors
 #define DESC_SIZE					0x800 // 2048 bytes
-#define REG_IRQ_RX				0x0001
-#define TDT								0x03818
-#define TDH								0x03810
 #define ICR								0x000C0
-#define RDBAL0						0x02800
-#define RDBAH0						0x02804
-#define RDLEN0						0x02808
-#define RDH0							0x02810
-#define RDT0							0x02818
+#define LSC_INT						0x81000004
+#define RXQ_INT						0x80100080	
+#define RDBAL							0x02800
+#define RDBAH							0x02804
+#define RDLEN							0x02808
+#define RDH								0x02810
+#define RDT								0x02818
 #define RCTL							0x00100
 #define UPE								(1<<3)	
 #define MPE								(1<<4)
 #define BAM								(1<<15)
-
+#define EN								(1<<1)
+#define RXQ								(1<<20)
 #define CTRL							0x00000
 #define IMC								0x000D8
+#define IMS								0x000D0
+#define LSC								(1<<2)
+#define INT_ASSERTED			(1<<31)
 #define GCR								0x05B00
 #define GCR2							0x05B64
 #define MDIC							0x00020
@@ -68,15 +80,12 @@ struct acme_ring{
 
 struct acme_dev{
 	struct cdev cdev;
-	struct pci_dev *pdev;
 	struct pci_hw hw;
 	struct work_struct task;
-	u32 rxd_cmd;
 	struct acme_ring rx_ring;
- 	struct acme_tx_desc *rx_desc[ACME_RXD];
-	struct acme_ring *tx_ring;
+	//u32 rxd_cmd;
 	u32 led_ctl;
-	int irq_info;
+	//int irq_info;
 	int blink_rate; //blinks per second
 } *acme_devp;
 
@@ -87,6 +96,16 @@ struct acme_rx_desc{
 	u8 status;
 	u8 errors;
 	__le16 special;
+};
+
+struct ring_info{
+	int head;
+	int tail;
+	u32 icr;
+	u32 rh;
+	u32 rl;
+	u32 len;
+	u32 led;
 };
 
 #endif
